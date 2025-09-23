@@ -142,6 +142,7 @@ class SinoJapaneseWarSimulation(WarAgentSimulation):
             verbose=True,
             allow_delegation=True,
             llm=self.llm,
+            max_rpm=os.getenv('MAX_RPM', 60),
             tools=[self._create_imperial_decision_tool()]
         )
         specialized_agents["Emperor"] = emperor_agent
@@ -171,6 +172,7 @@ class SinoJapaneseWarSimulation(WarAgentSimulation):
             verbose=True,
             allow_delegation=True,
             llm=self.llm,
+            max_rpm=os.getenv('MAX_RPM', 60),
             tools=[self._create_military_faction_tool("Tosei_Ha")]
         )
         specialized_agents["Tosei_Ha"] = tosei_ha_agent
@@ -200,6 +202,7 @@ class SinoJapaneseWarSimulation(WarAgentSimulation):
             verbose=True,
             allow_delegation=True,
             llm=self.llm,
+            max_rpm=os.getenv('MAX_RPM', 60),
             tools=[self._create_field_army_tool("Kwantung_Army")]
         )
         specialized_agents["Kwantung_Army"] = kwantung_army_agent
@@ -230,6 +233,7 @@ class SinoJapaneseWarSimulation(WarAgentSimulation):
             verbose=True,
             allow_delegation=True,
             llm=self.llm,
+            max_rpm=os.getenv('MAX_RPM', 60),
             tools=[self._create_nationalist_command_tool()]
         )
         specialized_agents["Chiang_Kai_Shek"] = chiang_agent
@@ -259,6 +263,7 @@ class SinoJapaneseWarSimulation(WarAgentSimulation):
             verbose=True,
             allow_delegation=True,
             llm=self.llm,
+            max_rpm=os.getenv('MAX_RPM', 60),
             tools=[self._create_communist_organization_tool()]
         )
         specialized_agents["Chinese_Communists"] = communist_agent
@@ -293,6 +298,7 @@ class SinoJapaneseWarSimulation(WarAgentSimulation):
             verbose=True,
             allow_delegation=True,
             llm=self.llm,
+            max_rpm=os.getenv('MAX_RPM', 60),
             tools=[self._create_economic_power_tool()]
         )
         specialized_agents["Zaibatsu"] = zaibatsu_agent
