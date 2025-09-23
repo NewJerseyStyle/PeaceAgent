@@ -1,5 +1,5 @@
 # PeaceAgent
-Based on agiresearch/WarAgent but with HITL for role play
+Based on [agiresearch/WarAgent](https://github.com/agiresearch/WarAgent) but implemented in CrewAI with HITL for role play targeting for peace 🕊️🇺🇳
 
 ## 📦 Setup
 ### Python version
