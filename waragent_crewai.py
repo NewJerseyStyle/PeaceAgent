@@ -16,7 +16,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import Enum
 
-from crewai import Agent, Task, Crew, Process
+from crewai import Agent, Task, Crew, Process, LLM
 from crewai.tools.base_tool import Tool
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
@@ -83,6 +83,8 @@ class WarAgentSimulation:
             self.llm = ChatAnthropic(model="claude-2", temperature=0.7)
         elif llm_model.startswith("groq/"):
             self.llm = ChatGroq(model=llm_model, temperature=0.7)
+        elif llm_model.startswith("gemini/"):
+            self.llm = LLM(model="gemini/gemini-2.0-flash", temperature=0.7)
         else:
             raise ValueError(f"Unsupported model: {llm_model}")
         
