@@ -354,6 +354,81 @@
             font-family: monospace;
         }
 
+        .coalition-panel {
+            background: #f8f9fa;
+            border: 2px solid #6c757d;
+            border-radius: 12px;
+            padding: 20px;
+            margin-top: 30px;
+        }
+
+        .coalition-panel h3 {
+            color: #495057;
+            margin-bottom: 20px;
+            font-size: 1.3rem;
+        }
+
+        .coalition-panel h4 {
+            color: #6c757d;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 1.1rem;
+        }
+
+        .war-intention-display {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 25px;
+        }
+
+        .intention-card {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            border-left: 4px solid #ffc107;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .intention-label {
+            color: #666;
+            font-size: 0.95rem;
+        }
+
+        .intention-value {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: #dc3545;
+        }
+
+        .coalition-list, .faction-dynamics {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+        }
+
+        .coalition-item, .faction-item {
+            padding: 8px 12px;
+            margin: 5px 0;
+            background: #f8f9fa;
+            border-radius: 6px;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .coalition-name, .faction-name {
+            font-weight: 600;
+            color: #333;
+        }
+
+        .coalition-power, .faction-stance {
+            color: #666;
+            font-size: 0.9rem;
+        }
+
         .loading {
             text-align: center;
             padding: 40px;
@@ -446,7 +521,7 @@
                     </div>
                 </div>
                 <div class="role-card" data-role="chiang">
-                    <div class="role-icon">🇨🇳</div>
+                    <div class="role-icon">🇹🇼</div>
                     <div class="role-title">蔣中正</div>
                     <div class="role-description">
                         中華民國領袖，面臨日本侵略威脅。
@@ -595,6 +670,33 @@
                 </div>
             </div>
 
+            <!-- Coalition Panel (visible in both modes for Chinese leader) -->
+            <div class="coalition-panel" id="coalitionPanel" style="display: none;">
+                <h3>🤝 派系與聯盟狀態</h3>
+                <div class="coalition-content">
+                    <div class="war-intention-display">
+                        <div class="intention-card">
+                            <span class="intention-label">日本戰爭傾向：</span>
+                            <span class="intention-value" id="japanWarIntention">--</span>/100
+                        </div>
+                        <div class="intention-card">
+                            <span class="intention-label">中國戰備狀態：</span>
+                            <span class="intention-value" id="chinaWarReadiness">--</span>/100
+                        </div>
+                    </div>
+
+                    <div class="coalition-list" id="coalitionList">
+                        <h4>當前聯盟：</h4>
+                        <!-- Coalition info will be populated here -->
+                    </div>
+
+                    <div class="faction-dynamics" id="factionDynamics">
+                        <h4>派系動態：</h4>
+                        <!-- Faction dynamics will be shown here -->
+                    </div>
+                </div>
+            </div>
+
             <!-- Loading State -->
             <div class="loading" id="loadingState" style="display: none;">
                 <div class="spinner"></div>
@@ -621,10 +723,16 @@
             currentTurn: 0,
             isSimulationRunning: false,
             currentDecision: null,
+            lastDecision: null,  // Track last decision for war intention calculation
+            gameEnded: false,
+            outcome: null,
             historicalEvents: [],
             warIntention: 50,  // 0=peace, 100=total war (BDM calculated)
+            japanWarIntention: null,  // Will be initialized based on year
+            chinaWarReadiness: null,  // Will be initialized based on year
             emperorInfluence: 30,  // Emperor's influence level
             factionStates: {},  // Detailed faction positions
+            factionHistory: []  // Track faction changes over time
             metrics: {
                 peace: 80,
                 diplomacy: 0,
@@ -632,6 +740,356 @@
                 stability: 20
             }
         };
+
+        // Get AI faction decisions based on game state
+        function getAIFactionDecisions(year, month) {
+            const decisions = {};
+
+            // Military faction decision based on tensions
+            if (gameState.tensions.military_faction > 60) {
+                decisions.military = 'escalate';
+            } else if (gameState.tensions.military_faction > 40) {
+                decisions.military = Math.random() > 0.5 ? 'escalate' : 'maintain';
+            } else if (gameState.tensions.military_faction > 25) {
+                decisions.military = 'maintain';
+            } else {
+                decisions.military = 'restrain';
+            }
+
+            // Economic faction decision
+            if (gameState.tensions.economic_pressure > 70) {
+                decisions.economic = 'seek_resources';
+            } else if (gameState.tensions.economic_pressure > 50) {
+                decisions.economic = 'pressure';
+            } else {
+                decisions.economic = 'stabilize';
+            }
+
+            // Check for historical opportunities
+            if (year === 1931 && month >= 9 && gameState.tensions.military_faction > 50) {
+                decisions.kwantung = 'manchuria_opportunity';
+            }
+
+            if (year === 1936 && month === 2) {
+                decisions.military_coup = 'february_26_incident';
+            }
+
+            return decisions;
+        }
+
+        // Calculate dynamic tensions based on AI decisions and context
+        function calculateDynamicTensions(aiDecisions, year) {
+            const changes = {
+                military_faction: 0,
+                economic_pressure: 0,
+                nationalist_sentiment: 0,
+                international_pressure: 0
+            };
+
+            // Military faction actions affect tensions
+            if (aiDecisions.military === 'escalate') {
+                changes.military_faction += Math.random() * 15 - 5;  // +5 to +10 average
+                changes.nationalist_sentiment += Math.random() * 8 - 2;
+            } else if (aiDecisions.military === 'restrain') {
+                changes.military_faction -= Math.random() * 10;  // -10 to 0
+                changes.international_pressure -= Math.random() * 5;
+            } else {
+                changes.military_faction += Math.random() * 4 - 2;  // -2 to +2
+            }
+
+            // Economic pressures can improve or worsen
+            if (aiDecisions.economic === 'seek_resources') {
+                changes.military_faction += 5;
+                changes.economic_pressure += Math.random() * 5;
+            } else if (aiDecisions.economic === 'stabilize') {
+                changes.economic_pressure -= Math.random() * 8;
+            }
+
+            // Historical events create spikes
+            if (aiDecisions.kwantung === 'manchuria_opportunity') {
+                changes.military_faction += 20;
+                changes.nationalist_sentiment += 15;
+                changes.international_pressure += 10;
+            }
+
+            if (aiDecisions.military_coup === 'february_26_incident') {
+                changes.military_faction += 15;
+                changes.nationalist_sentiment += 10;
+            }
+
+            // Random events for ups and downs (10% chance)
+            if (Math.random() < 0.1) {
+                const eventType = Math.random();
+                if (eventType < 0.3) {
+                    // Peace breakthrough
+                    changes.military_faction -= 15;
+                    changes.nationalist_sentiment -= 10;
+                    addEvent("和平契機", "外交渠道取得突破，緊張局勢緩解");
+                } else if (eventType < 0.6) {
+                    // Military incident
+                    changes.military_faction += 12;
+                    changes.nationalist_sentiment += 8;
+                    addEvent("邊境衝突", "小規模軍事衝突升高緊張");
+                } else {
+                    // Economic crisis
+                    changes.economic_pressure += 15;
+                    changes.military_faction += 5;
+                    addEvent("經濟危機", "經濟困境加劇，軍方尋求出路");
+                }
+            }
+
+            // Depression era effects (1930-1933)
+            if (year <= 1933) {
+                changes.economic_pressure += Math.random() * 3;
+            } else {
+                // Recovery period
+                changes.economic_pressure -= Math.random() * 2;
+            }
+
+            return changes;
+        }
+
+        // Check for historical trigger conditions
+        function checkHistoricalTriggers(year, month) {
+            const triggers = [];
+
+            // Manchurian Incident conditions
+            if (year === 1931 && month >= 9) {
+                if (gameState.tensions.military_faction > 50 && gameState.tensions.economic_pressure > 40) {
+                    triggers.push({
+                        name: "九一八事變風險",
+                        probability: 0.4,
+                        effect: () => {
+                            gameState.tensions.military_faction += 25;
+                            gameState.japanWarIntention += 20;
+                        }
+                    });
+                }
+            }
+
+            // Shanghai Incident
+            if (year === 1932 && month === 1) {
+                if (gameState.japanWarIntention > 50) {
+                    triggers.push({
+                        name: "一二八事變可能",
+                        probability: 0.3,
+                        effect: () => {
+                            gameState.chinaWarReadiness += 15;
+                            gameState.tensions.nationalist_sentiment += 10;
+                        }
+                    });
+                }
+            }
+
+            // Process triggers
+            triggers.forEach(trigger => {
+                if (Math.random() < trigger.probability) {
+                    trigger.effect();
+                    addEvent(trigger.name, "歷史關鍵時刻觸發");
+                }
+            });
+        }
+
+        // Record faction state for history tracking
+        function recordFactionState() {
+            const currentYear = gameState.startYear + Math.floor(gameState.currentTurn / 12);
+            const currentMonth = (gameState.currentTurn % 12) + 1;
+
+            gameState.factionHistory.push({
+                turn: gameState.currentTurn,
+                date: `${currentYear}年${currentMonth}月`,
+                japanWarIntention: gameState.japanWarIntention || 0,
+                chinaWarReadiness: gameState.chinaWarReadiness || 0,
+                emperorInfluence: gameState.emperorInfluence,
+                decision: gameState.lastDecision,
+                metrics: {...gameState.metrics}
+            });
+        }
+
+        // Show detailed game report with visualization
+        function showGameReport() {
+            const report = generateGameReport();
+
+            // Create modal for report
+            const modal = document.createElement('div');
+            modal.style.cssText = `
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0,0,0,0.8);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                z-index: 10000;
+            `;
+
+            modal.innerHTML = `
+                <div style="background: white; padding: 30px; border-radius: 12px; max-width: 90%; max-height: 90%; overflow-y: auto;">
+                    <h2>🎮 遊戲報告</h2>
+                    ${report}
+                    <button onclick="this.closest('div').parentElement.remove()" class="submit-decision" style="margin-top: 20px;">
+                        關閉
+                    </button>
+                </div>
+            `;
+
+            document.body.appendChild(modal);
+        }
+
+        // Generate game report with charts
+        function generateGameReport() {
+            let report = '<div style="font-family: monospace;">';
+
+            // Summary
+            report += `<h3>📊 遊戲總結</h3>`;
+            report += `<p>角色: ${gameState.selectedRole === 'emperor' ? '昭和天皇' : '蔣中正'}</p>`;
+            report += `<p>總回合數: ${gameState.currentTurn}</p>`;
+            report += `<p>結果: ${gameState.outcome === 'war' ? '戰爭爆發' : '和平維持'}</p>`;
+            report += `<p>最終日本戰爭傾向: ${gameState.japanWarIntention}%</p>`;
+            report += `<p>最終中國戰備: ${gameState.chinaWarReadiness}%</p>`;
+
+            // War Intention Chart (ASCII)
+            report += `<h3>📈 戰爭傾向變化</h3>`;
+            report += '<pre style="background: #f0f0f0; padding: 10px; border-radius: 5px;">';
+
+            const maxVal = 100;
+            const chartHeight = 10;
+
+            // Create simple ASCII chart
+            for (let i = chartHeight; i >= 0; i--) {
+                const threshold = (i / chartHeight) * maxVal;
+                let line = String(Math.round(threshold)).padStart(3, ' ') + '% |';
+
+                gameState.factionHistory.forEach((state, idx) => {
+                    if (state.japanWarIntention >= threshold) {
+                        line += '█';
+                    } else {
+                        line += ' ';
+                    }
+                });
+
+                if (i === chartHeight) line += ' 日本';
+                report += line + '\n';
+            }
+
+            report += '     └' + '─'.repeat(gameState.factionHistory.length) + '\n';
+            report += '      ';
+            gameState.factionHistory.forEach((state, idx) => {
+                if (idx % 5 === 0) report += String(idx + 1);
+                else report += ' ';
+            });
+            report += ' (回合)\n';
+            report += '</pre>';
+
+            // Key Decisions
+            report += `<h3>🎯 關鍵決策</h3>`;
+            report += '<ul>';
+            const keyDecisions = gameState.factionHistory.filter(s => s.decision);
+            keyDecisions.forEach(state => {
+                const prevState = gameState.factionHistory[state.turn - 1];
+                const effect = prevState ? state.japanWarIntention - prevState.japanWarIntention : 0;
+                const effectStr = effect > 0 ? `+${effect}%` : `${effect}%`;
+                report += `<li>${state.date}: ${state.decision} (戰爭傾向 ${effectStr})</li>`;
+            });
+            report += '</ul>';
+
+            // Faction drivers
+            report += `<h3>👥 推動戰爭的派系</h3>`;
+            if (gameState.selectedRole === 'emperor') {
+                report += `<p>• 關東軍: 主要推手 (每回合 +2-3%)</p>`;
+                report += `<p>• 統制派: 漸進推動 (每回合 +1-2%)</p>`;
+                report += `<p>• 皇道派殘餘: 激進派 (事件觸發 +5%)</p>`;
+            } else {
+                report += `<p>• 學生運動: 民族主義 (每回合 +1%)</p>`;
+                report += `<p>• 共產黨: 抗日統一戰線 (聯合時 +3%)</p>`;
+                report += `<p>• 地方軍閥: 自保為主 (變動)</p>`;
+            }
+
+            report += '</div>';
+            return report;
+        }
+
+        // Export game data as JSON
+        function exportGameData() {
+            const exportData = {
+                gameInfo: {
+                    role: gameState.selectedRole,
+                    startYear: gameState.startYear,
+                    totalTurns: gameState.currentTurn,
+                    outcome: gameState.outcome
+                },
+                factionHistory: gameState.factionHistory,
+                events: gameState.historicalEvents,
+                finalMetrics: gameState.metrics,
+                finalWarIntentions: {
+                    japan: gameState.japanWarIntention,
+                    china: gameState.chinaWarReadiness
+                }
+            };
+
+            const dataStr = JSON.stringify(exportData, null, 2);
+            const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+
+            const exportFileDefaultName = `peace_simulator_${gameState.selectedRole}_${Date.now()}.json`;
+
+            const linkElement = document.createElement('a');
+            linkElement.setAttribute('href', dataUri);
+            linkElement.setAttribute('download', exportFileDefaultName);
+            linkElement.click();
+        }
+
+        // Reset game to start new session
+        function resetGame() {
+            // Reset all game state
+            gameState = {
+                selectedRole: null,
+                selectedMode: 'default',
+                selectedModel: 'groq/llama3-70b-8192',
+                maxTurns: 120,
+                startYear: 1930,
+                currentTurn: 0,
+                isSimulationRunning: false,
+                currentDecision: null,
+                lastDecision: null,
+                gameEnded: false,
+                outcome: null,
+                historicalEvents: [],
+                warIntention: 50,
+                japanWarIntention: null,
+                chinaWarReadiness: null,
+                emperorInfluence: 30,
+                factionStates: {},
+                factionHistory: [],
+                metrics: {
+                    peace: 80,
+                    diplomacy: 0,
+                    reputation: 30,
+                    stability: 20
+                }
+            };
+
+            // Reset UI
+            document.getElementById('setupScreen').style.display = 'flex';
+            document.getElementById('simulationScreen').style.display = 'none';
+            document.getElementById('coalitionPanel').style.display = 'none';
+            document.getElementById('devPanel').style.display = 'none';
+            document.getElementById('decisionPanel').style.display = 'none';
+
+            // Clear events log
+            document.getElementById('eventsList').innerHTML = `
+                <div class="event-item">
+                    <div class="event-time">1930年1月</div>
+                    <div>經濟大蕭條影響亞洲，日本軍國主義抬頭</div>
+                </div>
+            `;
+
+            // Reset role selection
+            document.querySelectorAll('.role-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+        }
 
         // Initialize UI
         document.addEventListener('DOMContentLoaded', function() {
@@ -726,6 +1184,31 @@
             gameState.isSimulationRunning = true;
             gameState.currentTurn = 0;
 
+            // Set different initial states based on role
+            if (gameState.selectedRole === 'emperor') {
+                // Japan in 1930: Economic crisis but military ambitions growing
+                gameState.metrics = {
+                    peace: 65,      // Some militarism but not war yet
+                    diplomacy: 20,  // Limited diplomatic success
+                    reputation: 60, // Still respected internationally
+                    stability: 45   // Economic crisis affecting stability
+                };
+                gameState.warIntention = 35; // Military planning but not ready
+                gameState.emperorInfluence = 40; // Stronger initially
+            } else { // Chiang
+                // China in 1930: Civil war, Japanese pressure, weak central government
+                gameState.metrics = {
+                    peace: 45,      // Internal conflicts and Japanese threats
+                    diplomacy: 15,  // Limited international support
+                    reputation: 35, // Seen as divided and weak
+                    stability: 25   // Civil war and warlordism
+                };
+                gameState.warIntention = 25; // More defensive posture
+            }
+
+            // Update initial display
+            updateMetrics();
+
             // Hide setup panel and show simulation
             document.getElementById('setupPanel').style.display = 'none';
             document.getElementById('simulationArea').style.display = 'block';
@@ -752,11 +1235,18 @@
                 document.getElementById('devPanel').style.display = 'block';
             }
 
-            // Start first turn
-            startNewTurn();
+            // Start first turn with a small delay to ensure UI is ready
+            setTimeout(() => {
+                startNewTurn();
+            }, 100);
         }
 
         function startNewTurn() {
+            // Check if game has ended
+            if (gameState.gameEnded) {
+                return;
+            }
+
             gameState.currentTurn++;
 
             // Update turn counter
@@ -773,58 +1263,149 @@
             // Show loading state with current turn info
             showLoading(true, true);
 
+            // Update coalition status if playing as Chinese leader or in dev mode
+            if (gameState.selectedRole === 'chiang' || gameState.selectedMode === 'dev') {
+                updateCoalitionStatus();
+
+                // If war was triggered, don't continue
+                if (gameState.gameEnded) {
+                    return;
+                }
+
+                // Record faction state for history tracking
+                recordFactionState();
+            }
+
             // Simulate AI analysis (in real implementation, this would call the backend)
             setTimeout(() => {
-                generateSituationUpdate();
-                showLoading(false);
-                showDecisionPanel();
+                if (!gameState.gameEnded) {
+                    generateSituationUpdate();
+                    showLoading(false);
+                    showDecisionPanel();
+                }
             }, 3000);
         }
 
         function generateSituationUpdate() {
-            const situations = {
-                emperor: [
-                    "軍部將領要求您批准對華北的進一步軍事行動，聲稱這是維護帝國尊嚴的必要措施。同時，國際觀察家警告此舉可能引發全面戰爭。",
-                    "關東軍報告中國軍隊在華北集結，要求預先批准自衛反擊。外務省建議透過外交途徑解決，但軍部認為外交手段過於軟弱。",
-                    "國際聯盟呼籲雙方克制，美國表達關切。軍部認為這是西方勢力干涉，但也有顧問建議這是展現日本和平意願的機會。"
-                ],
-                chiang: [
-                    "日軍在華北調動頻繁，地方指揮官請求中央政府明確指示。共產黨方面表示願意暫時合作抗日，但條件是停止剿共。",
-                    "各地軍閥對是否抵抗日軍意見分歧，有些主張妥協以保存實力，有些要求堅決抵抗。國際社會的支持仍然有限。",
-                    "日本方面釋出可能談判的信號，但條件苛刻。國內輿論要求強硬回應，但軍事實力差距明顯。"
-                ]
-            };
+            // Calculate current date
+            const currentYear = gameState.startYear + Math.floor(gameState.currentTurn / 12);
+            const currentMonth = (gameState.currentTurn % 12) + 1;
 
-            const currentSituations = situations[gameState.selectedRole];
-            const situationIndex = (gameState.currentTurn - 1) % currentSituations.length;
-            
-            document.getElementById('currentSituation').textContent = currentSituations[situationIndex];
+            // Generate historically accurate situations based on year
+            let currentSituation = "";
+            if (gameState.selectedRole === 'emperor') {
+                if (currentYear === 1930) {
+                    const situations1930 = [
+                        "倫敦海軍會議正在進行，海軍分裂為條約派和艦隊派。軍部要求您支持擴張海軍。",
+                        "經濟大蕭條影響日本，農村破產嚴重。軍部提出向滿洲擴張以解決經濟問題。",
+                        "三月事件的謠言在軍中傳播，激進軍官計劃政變。您需要決定如何應對。",
+                        "關東軍報告張學良在東北增強控制，建議先發制人。外務省主張謹慎。"
+                    ];
+                    currentSituation = situations1930[currentMonth % situations1930.length];
+                } else if (currentYear === 1931) {
+                    currentSituation = "中村大尉事件後，關東軍要求報復。石原莞爾正在策劃某些行動。";
+                } else if (currentYear >= 1936) {
+                    currentSituation = "二二六事件後，軍部統制派完全掌權。對華政策需要您的指引。";
+                } else {
+                    currentSituation = "軍部持續推動擴張政策，外務省努力維持和平。您的決定至關重要。";
+                }
+            } else { // chiang
+                if (currentYear === 1930) {
+                    const situations1930 = [
+                        "中原大戰剛結束，各地軍閥仍不服從中央。紅軍在江西建立根據地。",
+                        "日本在滿洲加強活動，但目前主要威脅來自內部。共產黨在贛州擴張。",
+                        "德國顧問團建議先統一國內再對外。財政困難，需要經濟建設。",
+                        "廣東廣西軍閥要求自治，北方軍閥觀望。國民黨內部分裂嚴重。"
+                    ];
+                    currentSituation = situations1930[currentMonth % situations1930.length];
+                } else if (currentYear === 1931 && currentMonth >= 9) {
+                    currentSituation = "九一八事變發生，東北危急。但您正在第三次圍剿中，無法全力應對。";
+                } else if (currentYear >= 1936) {
+                    currentSituation = "西安事變前夕，張學良和楊虎城要求停止內戰。共產黨提出合作抗日。";
+                } else {
+                    currentSituation = "內憂外患並存，需要在統一國內和防禦外敵間平衡。";
+                }
+            }
+
+            // Get historical context
+            const historicalContext = getHistoricalContext(currentYear, currentMonth);
+
+            // Check for random incident
+            const incident = generateRandomIncident(currentYear, currentMonth, gameState.warIntention);
+            if (incident) {
+                // Apply incident effects
+                gameState.metrics.peace += incident.peaceEffect;
+                gameState.warIntention += incident.warEffect;
+                gameState.warIntention = Math.max(0, Math.min(100, gameState.warIntention));
+                updateMetrics();
+            }
+
+            // Generate dynamic news
+            const dynamicNews = generateDynamicNews(currentYear, currentMonth, gameState.warIntention);
+
+            // Build situation display
+            let situationHtml = `
+                <div style="font-weight: bold; margin-bottom: 10px; font-size: 1.1rem; color: #667eea;">${currentYear}年${currentMonth}月</div>
+                <div style="background: #e8f4f8; padding: 10px; border-radius: 5px; margin-bottom: 10px;">
+                    <strong>歷史背景：</strong> ${historicalContext}
+                </div>`;
+
+            if (incident) {
+                situationHtml += `
+                    <div style="background: #fff3cd; border: 2px solid #ffc107; border-radius: 8px; padding: 12px; margin: 15px 0;">
+                        <div style="font-weight: bold; color: #dc3545; margin-bottom: 5px;">⚠️ 突發事件：${incident.title}</div>
+                        <div style="color: #856404;">${incident.description}</div>
+                    </div>`;
+            }
+
+            situationHtml += `
+                <div style="margin-top: 10px; padding: 10px; background: white; border-radius: 5px; border: 1px solid #dee2e6;">
+                    <strong>當前局勢：</strong> ${currentSituation}
+                </div>
+                <div style="margin-top: 10px; padding: 10px; background: #f8f9fa; border-left: 3px solid #6c757d; font-style: italic;">
+                    <strong>📰 最新消息：</strong> ${dynamicNews}
+                </div>`;
+
+            document.getElementById('currentSituation').innerHTML = situationHtml;
 
             // Add event to log
-            addEvent(`第${gameState.currentTurn}回合`, currentSituations[situationIndex]);
+            addEvent(`${currentYear}年${currentMonth}月`, currentSituation);
 
-            // Simulate dev mode AI thoughts with progressive updates
+            // Enhanced dev mode with year-appropriate AI thoughts
             if (gameState.selectedMode === 'dev') {
-                const devThoughts = [
-                    { agent: "Tosei-ha Agent", thought: "分析當前局勢，建議採取漸進式控制策略..." },
-                    { agent: "Chinese Communist Agent", thought: "評估統一戰線可能性，準備群眾動員方案..." },
-                    { agent: "Zaibatsu Agent", thought: "計算戰爭經濟收益，評估國際市場風險..." }
-                ];
-
                 const devOutput = document.getElementById('devOutput');
-                devOutput.innerHTML = '';
+                devOutput.innerHTML = '<div style="font-weight: bold; margin-bottom: 10px;">🤖 AI代理思維過程：</div>';
 
-                // Show thoughts progressively
-                devThoughts.forEach((item, index) => {
+                // Generate year-appropriate thoughts
+                const aiThoughts = generateAIThoughts(currentYear, currentMonth, gameState.selectedRole);
+
+                aiThoughts.forEach((item, index) => {
                     setTimeout(() => {
                         const thoughtDiv = document.createElement('div');
-                        thoughtDiv.style.cssText = "margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px; opacity: 0; transition: opacity 0.5s;";
-                        thoughtDiv.innerHTML = `<strong>${item.agent}:</strong> ${item.thought}`;
+                        thoughtDiv.style.cssText = "margin: 10px 0; padding: 12px; background: linear-gradient(135deg, #f5f5f5, #e8e8e8); border-left: 3px solid #667eea; border-radius: 5px; opacity: 0; transition: opacity 0.5s;";
+                        thoughtDiv.innerHTML = `
+                            <strong style="color: #667eea;">${item.agent}:</strong>
+                            <div style="color: #333; font-style: italic; margin-top: 5px;">"${item.thought}"</div>
+                        `;
                         devOutput.appendChild(thoughtDiv);
-                        // Fade in
                         setTimeout(() => { thoughtDiv.style.opacity = '1'; }, 50);
-                    }, index * 500);
+                    }, index * 800);
                 });
+
+                // Show faction war positions
+                setTimeout(() => {
+                    const factionDiv = document.createElement('div');
+                    factionDiv.style.cssText = "margin-top: 20px; padding: 15px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 8px;";
+                    factionDiv.innerHTML = `
+                        <div style="font-weight: bold; color: #856404; margin-bottom: 10px;">📊 各派系戰爭傾向分析：</div>
+                        <div>🔴 軍部激進派: ${Math.min(95, gameState.warIntention + 25)}%</div>
+                        <div>🟡 軍部溫和派: ${Math.max(20, Math.min(80, gameState.warIntention))}%</div>
+                        <div>🟢 外務省: ${Math.max(10, gameState.warIntention - 35)}%</div>
+                        <div>💰 財閥: ${Math.max(15, gameState.warIntention - 25)}%</div>
+                        <div>👑 宮廷: ${Math.max(5, gameState.warIntention - 40)}%</div>
+                    `;
+                    devOutput.appendChild(factionDiv);
+                }, aiThoughts.length * 800 + 500);
             }
         }
 
@@ -931,6 +1512,9 @@
                 appeal: '公開呼籲'
             };
 
+            // Track the decision for war intention calculation
+            gameState.lastDecision = decision;
+
             addEvent(`${decisionNames[decision]}`, `決策執行: ${reasoning.substring(0, 100)}...`);
 
             // Generate AI responses
@@ -964,20 +1548,235 @@
             addEvent("各方回應", response);
         }
 
+        function updateCoalitionStatus() {
+            // Show coalition panel
+            document.getElementById('coalitionPanel').style.display = 'block';
+
+            // Simulate coalition data (in real implementation, fetch from backend)
+            const coalitionData = generateCoalitionData();
+
+            // Update war intentions
+            document.getElementById('japanWarIntention').textContent = coalitionData.japanWarIntention;
+            document.getElementById('chinaWarReadiness').textContent = coalitionData.chinaWarReadiness;
+
+            // Check for automatic war trigger
+            if (coalitionData.japanWarIntention >= 100 || coalitionData.chinaWarReadiness >= 100) {
+                triggerAutomaticWar(coalitionData);
+                return;
+            }
+
+            // Update coalition list
+            const coalitionListHTML = coalitionData.coalitions.map(coalition => `
+                <div class="coalition-item">
+                    <span class="coalition-name">${coalition.name}</span>
+                    <span class="coalition-power">成員: ${coalition.members} | 實力: ${coalition.power}</span>
+                </div>
+            `).join('');
+            document.getElementById('coalitionList').innerHTML = '<h4>當前聯盟：</h4>' + coalitionListHTML;
+
+            // Update faction dynamics
+            const factionHTML = coalitionData.factions.map(faction => `
+                <div class="faction-item">
+                    <span class="faction-name">${faction.name}</span>
+                    <span class="faction-stance">${faction.focus} | ${faction.stance}</span>
+                </div>
+            `).join('');
+            document.getElementById('factionDynamics').innerHTML = '<h4>派系動態：</h4>' + factionHTML;
+        }
+
+        function triggerAutomaticWar(coalitionData) {
+            // War has been automatically triggered
+            showLoading(false);
+            document.getElementById('decisionPanel').style.display = 'none';
+
+            let warStarter = '';
+            let message = '';
+
+            if (coalitionData.japanWarIntention >= 100) {
+                warStarter = '日本';
+                message = '日本軍部完全失控，發動全面侵華戰爭！和平努力失敗。';
+            } else {
+                warStarter = '中國';
+                message = '中國各派系達成共識，決定全面抗戰！外交途徑已經關閉。';
+            }
+
+            // Display war outcome
+            document.getElementById('currentSituation').innerHTML = `
+                <div style="color: #dc3545; font-size: 1.5rem; font-weight: bold;">
+                    💥 戰爭爆發！${warStarter}戰爭傾向達到100%
+                </div>
+                <p style="margin-top: 20px;">${message}</p>
+                <p style="margin-top: 20px; font-weight: bold;">
+                    遊戲結束 - 和平失敗
+                </p>
+                <div style="margin-top: 30px;">
+                    <button onclick="showGameReport()" class="submit-decision" style="background: #17a2b8; margin-right: 10px;">
+                        📊 查看詳細報告
+                    </button>
+                    <button onclick="exportGameData()" class="submit-decision" style="background: #28a745; margin-right: 10px;">
+                        💾 導出遊戲數據
+                    </button>
+                    <button onclick="resetGame()" class="submit-decision" style="background: #667eea;">
+                        🔄 重新開始
+                    </button>
+                </div>
+            `;
+
+            // Add to events log
+            addEvent("戰爭爆發", `${warStarter}發動全面戰爭，和平努力失敗`);
+
+            // End game
+            gameState.gameEnded = true;
+            gameState.outcome = 'war';
+
+            // Record faction state at time of war
+            recordFactionState();
+        }
+
+        function generateCoalitionData() {
+            // Simulate dynamic coalition data based on turn
+            const turn = gameState.currentTurn;
+            const currentYear = gameState.startYear + Math.floor(turn / 12);
+            const currentMonth = (turn % 12) + 1;
+
+            // Initialize faction war intentions if not set
+            if (!gameState.japanWarIntention) {
+                gameState.japanWarIntention = 35;  // 1930 starting point
+                gameState.chinaWarReadiness = 25;  // 1930 starting point
+                gameState.tensions = {
+                    military_faction: 35,
+                    economic_pressure: 45,
+                    nationalist_sentiment: 30,
+                    international_pressure: 20
+                };
+            }
+
+            // DYNAMIC SYSTEM - NO FIXED ESCALATION RATE!
+            // Use AI decisions, coalition dynamics, and game theory
+
+            // Step 1: AI Faction Decisions (simulated)
+            const aiDecisions = getAIFactionDecisions(currentYear, currentMonth);
+
+            // Step 2: Calculate tension changes based on multiple factors
+            const tensionChanges = calculateDynamicTensions(aiDecisions, currentYear);
+
+            // Step 3: Apply tension changes
+            for (let key in tensionChanges) {
+                gameState.tensions[key] = Math.max(0, Math.min(100,
+                    gameState.tensions[key] + tensionChanges[key]));
+            }
+
+            // Step 4: War intentions based on weighted factors, NOT fixed rate
+            const japanFactors = {
+                military: gameState.tensions.military_faction * 0.4,
+                economic: gameState.tensions.economic_pressure * 0.2,
+                nationalist: gameState.tensions.nationalist_sentiment * 0.2,
+                international: (100 - gameState.tensions.international_pressure) * 0.1,
+                random: (Math.random() - 0.5) * 10  // Can go UP or DOWN
+            };
+
+            const chinaFactors = {
+                japan_threat: gameState.japanWarIntention * 0.3,
+                internal_unity: (100 - gameState.tensions.internal_strife || 70) * 0.2,
+                preparation: 20,
+                random: (Math.random() - 0.5) * 8
+            };
+
+            // Calculate new intentions with smoothing
+            const newJapanIntention = Object.values(japanFactors).reduce((a, b) => a + b, 0);
+            const newChinaReadiness = Object.values(chinaFactors).reduce((a, b) => a + b, 0);
+
+            // Smooth transitions to prevent wild swings
+            gameState.japanWarIntention = 0.7 * gameState.japanWarIntention + 0.3 * newJapanIntention;
+            gameState.chinaWarReadiness = 0.8 * gameState.chinaWarReadiness + 0.2 * newChinaReadiness;
+
+            // Factor in player decisions with stronger effect
+            if (gameState.lastDecision) {
+                // Emperor actions affect Japan's intention
+                if (gameState.selectedRole === 'emperor') {
+                    if (gameState.lastDecision === 'do_nothing') {
+                        gameState.japanWarIntention += 2;  // Military acts unchecked
+                    } else if (gameState.lastDecision === 'diplomatic' || gameState.lastDecision === 'rally_moderates') {
+                        gameState.japanWarIntention -= 8;  // Strong peace effort
+                    } else if (gameState.lastDecision === 'restraint') {
+                        gameState.japanWarIntention -= 4;  // Moderate restraint
+                    } else if (gameState.lastDecision === 'support_military') {
+                        gameState.japanWarIntention += 8;  // Encourages militarism
+                    } else if (gameState.lastDecision === 'dismiss_minister') {
+                        gameState.japanWarIntention -= 6;  // Removes hawks
+                    }
+                }
+
+                // Chiang actions affect China's readiness
+                if (gameState.selectedRole === 'chiang') {
+                    if (gameState.lastDecision.includes('military') || gameState.lastDecision.includes('suppress')) {
+                        gameState.chinaWarReadiness += 6;
+                        gameState.japanWarIntention += 3;  // Japan reacts
+                    } else if (gameState.lastDecision.includes('diplomatic') || gameState.lastDecision.includes('concession')) {
+                        gameState.chinaWarReadiness -= 4;
+                        gameState.japanWarIntention -= 2;  // Reduces tensions
+                    } else if (gameState.lastDecision.includes('unite') || gameState.lastDecision.includes('coalition')) {
+                        gameState.chinaWarReadiness += 4;  // United but defensive
+                    }
+                }
+            }
+
+            // Apply Emperor influence modifier
+            if (gameState.selectedRole === 'emperor' && gameState.emperorInfluence > 0) {
+                // Higher influence = more control over military
+                const influenceMod = (gameState.emperorInfluence - 30) / 20;  // -1.5 to +1.5
+                gameState.japanWarIntention -= influenceMod;
+            }
+
+            // Ensure values stay in bounds
+            gameState.japanWarIntention = Math.min(100, Math.max(0, gameState.japanWarIntention));
+            gameState.chinaWarReadiness = Math.min(100, Math.max(0, gameState.chinaWarReadiness));
+
+            return {
+                japanWarIntention: Math.round(gameState.japanWarIntention),
+                chinaWarReadiness: Math.round(gameState.chinaWarReadiness),
+                coalitions: [
+                    { name: '國民政府聯盟', members: '蔣介石, 宋子文', power: 45 },
+                    { name: '北方軍閥聯盟', members: '閻錫山, 馮玉祥', power: 30 },
+                    { name: '共產黨游擊隊', members: '毛澤東, 周恩來', power: 15 }
+                ],
+                factions: [
+                    { name: '蔣介石派', focus: '內戰優先', stance: '謹慎抗日' },
+                    { name: '共產黨', focus: '抗日統一戰線', stance: '積極抗日' },
+                    { name: '張學良', focus: '保衛東北', stance: '強硬抗日' },
+                    { name: '廣西派系', focus: '地方自治', stance: '中立觀望' }
+                ]
+            };
+        }
+
         function updateMetrics() {
             document.getElementById('peaceScore').textContent = Math.round(gameState.metrics.peace);
             document.getElementById('diplomacyScore').textContent = Math.round(gameState.metrics.diplomacy);
             document.getElementById('reputationScore').textContent = Math.round(gameState.metrics.reputation);
             document.getElementById('stabilityScore').textContent = Math.round(gameState.metrics.stability);
+            document.getElementById('warIntentionScore').textContent = Math.round(gameState.warIntention);
 
             document.getElementById('peaceProgress').style.width = gameState.metrics.peace + '%';
             document.getElementById('diplomacyProgress').style.width = Math.min(100, gameState.metrics.diplomacy) + '%';
             document.getElementById('reputationProgress').style.width = gameState.metrics.reputation + '%';
             document.getElementById('stabilityProgress').style.width = gameState.metrics.stability + '%';
+            document.getElementById('warIntentionProgress').style.width = gameState.warIntention + '%';
 
             // Update progress bar colors based on values
             const peaceColor = gameState.metrics.peace > 70 ? '#28a745' : gameState.metrics.peace > 40 ? '#ffc107' : '#dc3545';
             document.getElementById('peaceProgress').style.background = `linear-gradient(45deg, ${peaceColor}, ${peaceColor}dd)`;
+
+            // Update war intention color
+            const warIntentionBar = document.getElementById('warIntentionProgress');
+            if (gameState.warIntention >= 90) {
+                warIntentionBar.style.background = 'linear-gradient(45deg, #dc3545, #721c24)';
+            } else if (gameState.warIntention >= 70) {
+                warIntentionBar.style.background = 'linear-gradient(45deg, #ffc107, #dc3545)';
+            } else if (gameState.warIntention >= 50) {
+                warIntentionBar.style.background = 'linear-gradient(45deg, #28a745, #ffc107)';
+            } else {
+                warIntentionBar.style.background = 'linear-gradient(45deg, #20c997, #28a745)';
+            }
         }
 
         function addEvent(title, description) {
@@ -1195,14 +1994,33 @@
                     { id: 'rally_moderates', icon: '🤝', title: '召集溫和派', desc: '組織溫和派商討和平', cost: 1 }
                 ];
             } else {
-                options = [
-                    { id: 'diplomatic', icon: '🕊️', title: '直接談判', desc: '提議中日直接談判' },
-                    { id: 'military_preparation', icon: '🛡️', title: '軍事準備', desc: '加強軍事準備，展示決心' },
-                    { id: 'unite_communists', icon: '🤝', title: '聯合共產黨', desc: '與共產黨合作抗日' },
-                    { id: 'international_appeal', icon: '🌐', title: '國際求援', desc: '向國際社會求助' },
-                    { id: 'local_concession', icon: '⚖️', title: '局部讓步', desc: '局部讓步避免全面戰爭' },
-                    { id: 'mobilize_nationalism', icon: '📢', title: '動員民族主義', desc: '激發民族主義情緒' }
-                ];
+                // Rotate options based on turn to show different domestic/external challenges
+                const turnMod = gameState.currentTurn % 3;
+                if (turnMod === 0) {
+                    // Focus on Japan
+                    options = [
+                        { id: 'diplomatic', icon: '🕊️', title: '對日談判', desc: '提議與日本直接談判' },
+                        { id: 'military_preparation', icon: '🛡️', title: '軍事準備', desc: '加強軍事準備，展示決心' },
+                        { id: 'international_appeal', icon: '🌐', title: '國際求援', desc: '向國際社會求助' },
+                        { id: 'local_concession', icon: '⚖️', title: '局部讓步', desc: '局部讓步避免全面戰爭' }
+                    ];
+                } else if (turnMod === 1) {
+                    // Focus on Communists
+                    options = [
+                        { id: 'unite_communists', icon: '🤝', title: '聯共抗日', desc: '停止剿共，共同抗日' },
+                        { id: 'suppress_communists', icon: '⚔️', title: '繼續剿共', desc: '先安內後攘外' },
+                        { id: 'negotiate_ceasefire', icon: '✋', title: '暫時停火', desc: '與共產黨暫時停火' },
+                        { id: 'mobilize_nationalism', icon: '📢', title: '民族團結', desc: '呼籲各派團結抗日' }
+                    ];
+                } else {
+                    // Focus on Warlords
+                    options = [
+                        { id: 'negotiate_warlords', icon: '🤝', title: '整合軍閥', desc: '與地方軍閥談判統一' },
+                        { id: 'bribe_warlords', icon: '💰', title: '利誘軍閥', desc: '用資源換取效忠' },
+                        { id: 'centralize_power', icon: '👑', title: '中央集權', desc: '削弱地方勢力' },
+                        { id: 'coalition_building', icon: '🏛️', title: '建立聯盟', desc: '組建抗日統一戰線' }
+                    ];
+                }
             }
 
             options.forEach(option => {
@@ -1253,6 +2071,86 @@
             link.href = URL.createObjectURL(dataBlob);
             link.download = `peace_simulation_results_${Date.now()}.json`;
             link.click();
+        }
+        // Enhanced simulation functions
+        function generateAIThoughts(year, month, playerRole) {
+            const thoughts = {
+                1930: {
+                    "統制派": ["經濟危機是擴張的機會，但需謹慎規劃", "應先在滿洲建立基地而非全面開戰", "海軍條約限制了我們的發展"],
+                    "關東軍": ["石原莞爾正制定滿蒙領有論", "張學良的東北軍是主要障礙", "需要製造事件作為行動藉口"],
+                    "財閥": ["經濟蕭條影響出口，需要新市場", "戰爭風險過大，應專注貿易", "美國市場至關重要"],
+                    "中共": ["紅軍在江西建立蘇區", "利用民族危機壯大力量", "國民黨圍剿是主要威脅"],
+                    "國民黨": ["必須先安內後攘外", "日本野心明顯但軍力不足", "需要時間進行現代化"]
+                },
+                1931: {
+                    "統制派": ["三月事件顯示需要更謹慎", "關東軍可能自主行動", "九一八時機已成熟"],
+                    "關東軍": ["柳條湖計劃已準備就緒", "東京猶豫令人沮喪", "必須自主行動"],
+                    "中共": ["長征準備中", "與國民黨鬥爭是主線", "日本侵略是次要矛盾"]
+                },
+                1936: {
+                    "統制派": ["二二六後完全控制軍部", "對華戰爭準備就緒", "西安事變改變局勢"],
+                    "國民黨": ["必須聯共抗日", "德國顧問協助軍事現代化", "上海是防禦重點"]
+                },
+                1937: {
+                    "統制派": ["盧溝橋可作為開戰藉口", "速戰速決是關鍵", "中國抵抗力被低估"],
+                    "國民黨": ["全面抗戰不可避免", "空間換時間策略", "國際支援至關重要"]
+                }
+            };
+
+            const yearThoughts = thoughts[year] || thoughts[1930];
+            const result = [];
+            for (let agent in yearThoughts) {
+                const agentThoughts = yearThoughts[agent];
+                result.push({
+                    agent: agent,
+                    thought: agentThoughts[Math.floor(Math.random() * agentThoughts.length)]
+                });
+            }
+            return result;
+        }
+
+        function generateRandomIncident(year, month, warIntention) {
+            const incidents = [
+                { minTension: 0, maxTension: 30, title: "邊境走私事件", desc: "滿洲邊境走私衝突", peaceEffect: -2, warEffect: 3 },
+                { minTension: 20, maxTension: 50, title: "間諜被捕", desc: "日本間諜在華被捕", peaceEffect: -5, warEffect: 8 },
+                { minTension: 40, maxTension: 70, title: "士兵衝突", desc: "邊境巡邏隊交火", peaceEffect: -8, warEffect: 12 },
+                { minTension: 60, maxTension: 90, title: "軍官擅自行動", desc: "前線軍官未經授權攻擊", peaceEffect: -15, warEffect: 20 }
+            ];
+
+            if (Math.random() > 0.8) {
+                const validIncidents = incidents.filter(i => warIntention >= i.minTension && warIntention < i.maxTension);
+                if (validIncidents.length > 0) {
+                    return validIncidents[Math.floor(Math.random() * validIncidents.length)];
+                }
+            }
+            return null;
+        }
+
+        function generateDynamicNews(year, month, warIntention) {
+            const templates = [
+                `經濟：失業率${(15 + Math.random() * 10).toFixed(1)}%，民眾${warIntention > 50 ? '要求強硬' : '支持和平'}`,
+                `軍部：${warIntention > 60 ? '鷹派' : '溫和派'}影響力上升`,
+                `外交：${warIntention < 40 ? '和平談判有進展' : '外交關係惡化'}`,
+                `民間：${warIntention > 70 ? '戰爭' : '和平'}情緒高漲`
+            ];
+            return templates[Math.floor(Math.random() * templates.length)];
+        }
+
+        function getHistoricalContext(year, month) {
+            const contexts = {
+                1930: "經濟大蕭條影響亞洲。日本軍國主義抬頭，中國內戰持續。",
+                1931: "滿洲局勢緊張。九一八事變可能發生。",
+                1932: "滿洲國成立問題。一二八事變風險。",
+                1933: "日本退出國聯。長城抗戰可能。",
+                1934: "華北危機醞釀中。",
+                1935: "華北自治運動。",
+                1936: "二二六事件。西安事變。",
+                1937: "盧溝橋局勢緊張。",
+                1938: "戰爭擴大或和平鞏固。",
+                1939: "歐洲戰雲密布。",
+                1940: "世界大戰全面爆發。"
+            };
+            return contexts[year] || `${year}年：局勢發展中...`;
         }
     </script>
 </body>

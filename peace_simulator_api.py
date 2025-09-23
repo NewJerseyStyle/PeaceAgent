@@ -36,6 +36,8 @@ try:
         InteractivePeaceSimulator, PlayerRole, SimulationMode, PeaceMetrics
     )
     from sino_japanese_war_simulation import ConflictIntensity
+    from multi_agent_coalition_system import MultiAgentCoalitionSystem, Topic
+    from bdm_peace_calculator import PeaceWarCalculator
 except ImportError as e:
     logging.error(f"Failed to import simulation modules: {e}")
     sys.exit(1)
@@ -233,13 +235,47 @@ async def submit_decision(session_id: str, decision: PlayerDecisionRequest):
         raise HTTPException(status_code=500, detail=f"Failed to process decision: {str(e)}")
 
 
+@app.get("/api/simulation/{session_id}/coalition-status")
+async def get_coalition_status(session_id: str):
+    """Get current coalition and faction status."""
+    simulator = session_manager.get_session(session_id)
+    if not simulator:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    # Get coalition status
+    coalitions = {}
+    for coalition_name, coalition in simulator.coalition_system.coalitions.items():
+        coalitions[coalition_name] = {
+            "leader": coalition.leader,
+            "members": list(coalition.members),
+            "total_power": sum(
+                simulator.coalition_system.actors[m].get_total_power()
+                for m in coalition.members
+                if m in simulator.coalition_system.actors
+            )
+        }
+
+    # Get faction dynamics from BDM calculator
+    japan_position, japan_details = simulator.peace_calculator.calculate_country_intention("japan")
+    china_position, china_details = simulator.peace_calculator.calculate_country_intention("china")
+
+    return {
+        "coalitions": coalitions,
+        "japan_war_intention": japan_position,
+        "china_war_readiness": china_position,
+        "japan_factions": japan_details,
+        "china_factions": china_details,
+        "turn": simulator.game_state.current_turn
+    }
+
+
 @app.get("/api/simulation/{session_id}/results")
 async def get_simulation_results(session_id: str):
     """Get final simulation results."""
     results = session_manager.session_results.get(session_id)
     if not results:
         raise HTTPException(status_code=404, detail="Results not found")
-    
+
     return results
 
 

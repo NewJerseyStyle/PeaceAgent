@@ -34,6 +34,8 @@ from langchain_groq import ChatGroq
 # Import base classes
 from sino_japanese_war_simulation import SinoJapaneseWarSimulation, ConflictIntensity, DetailedEvent
 from historical_events_system import HistoricalEventsManager, HistoricalEvent, EventSeverity
+from multi_agent_coalition_system import MultiAgentCoalitionSystem, Topic, Actor, Coalition
+from bdm_peace_calculator import PeaceWarCalculator, EMPEROR_ACTIONS, CHIANG_ACTIONS
 
 
 class PlayerRole(Enum):
@@ -75,6 +77,15 @@ class InteractivePeaceSimulator(SinoJapaneseWarSimulation):
         # Initialize historical events system
         self.events_manager = HistoricalEventsManager(start_year)
         self.start_year = start_year
+
+        # Initialize multi-agent coalition system
+        self.coalition_system = MultiAgentCoalitionSystem()
+        self.peace_calculator = PeaceWarCalculator()
+
+        # Initialize coalitions
+        self.coalition_system.coalitions["KMT_Government"] = Coalition("KMT_Government", "Chiang_KMT")
+        self.coalition_system.coalitions["United_Front"] = Coalition("United_Front", "CCP")
+        self.coalition_system.coalitions["Northern_Alliance"] = Coalition("Northern_Alliance", "Yan_Xishan")
 
         # Override initial conflict intensity for peace-focused simulation
         self.conflict_intensity = ConflictIntensity.DIPLOMATIC
@@ -388,10 +399,14 @@ Key Challenges:
     def create_interactive_tasks(self) -> List[Task]:
         """Create tasks with human input for interactive simulation."""
         tasks = []
-        
+
+        # Get coalition and faction status
+        coalition_status = self._get_coalition_status()
+        faction_dynamics = self._get_faction_dynamics()
+
         # Human player decision task
         human_player_agent = self.create_human_player_agent()
-        
+
         player_task = Task(
             description=f"""
 🎯 PEACE SIMULATION - Turn {self.game_state.current_turn}
@@ -402,6 +417,12 @@ Current Situation:
 - Your Peace Score: {self.peace_metrics.conflict_prevention:.1f}/100
 - International Reputation: {self.peace_metrics.international_reputation:.1f}/100
 - Diplomatic Success Rate: {self.peace_metrics.diplomatic_success:.1f}
+
+Faction Dynamics:
+{faction_dynamics}
+
+Coalition Status:
+{coalition_status}
 
 Recent Developments:
 {self._format_recent_events()}
@@ -414,11 +435,13 @@ As {'Emperor Hirohito' if self.player_role == PlayerRole.EMPEROR else 'Chiang Ka
 
 Consider these options:
 1. Diplomatic Initiative - Propose direct negotiations
-2. Military Restraint - Order forces to avoid escalation  
+2. Military Restraint - Order forces to avoid escalation
 3. International Mediation - Seek third-party intervention
 4. Internal Consultation - Rally domestic support for peace
 5. Strategic Concession - Offer compromise to prevent war
 6. Public Appeal - Make statement to international community
+7. Coalition Management - Influence faction alignments
+8. Resource Reallocation - Shift focus between different policy areas
 
 Your decision will significantly impact the peace process. Choose wisely!
 
@@ -436,16 +459,57 @@ Use your decision tool to implement your choice with detailed reasoning.
         
         return tasks
 
+    def _get_coalition_status(self) -> str:
+        """Get current coalition status for display."""
+        status_lines = []
+        for coalition_name, coalition in self.coalition_system.coalitions.items():
+            members = ", ".join(coalition.members)
+            total_power = sum(
+                self.coalition_system.actors[m].get_total_power()
+                for m in coalition.members
+                if m in self.coalition_system.actors
+            )
+            status_lines.append(f"- {coalition_name}: {members} (Power: {total_power:.1f})")
+
+        if not status_lines:
+            return "- No active coalitions"
+
+        return "\n".join(status_lines)
+
+    def _get_faction_dynamics(self) -> str:
+        """Get faction dynamics based on BDM calculations."""
+        if self.player_role == PlayerRole.EMPEROR:
+            japan_position, japan_details = self.peace_calculator.calculate_country_intention("japan")
+            lines = [f"Japan War Intention: {japan_position:.1f}/100"]
+
+            # Show top 3 most influential factions
+            sorted_factions = sorted(japan_details.items(),
+                                   key=lambda x: x[1]['influence'], reverse=True)[:3]
+            for faction_name, details in sorted_factions:
+                lines.append(f"- {faction_name}: {details['stance']} (Influence: {details['influence']:.1f})")
+        else:
+            china_position, china_details = self.peace_calculator.calculate_country_intention("china")
+            lines = [f"China War Readiness: {china_position:.1f}/100"]
+
+            # Show Chinese coalition dynamics
+            for actor_name, actor in list(self.coalition_system.actors.items())[:3]:
+                if actor.faction_type != "military":  # Focus on Chinese actors
+                    focus = max(actor.resource_allocation.get_weights().items(),
+                              key=lambda x: x[1])[0].value if actor.resource_allocation.get_weights() else "balanced"
+                    lines.append(f"- {actor_name}: Focus on {focus} (Coalition: {actor.coalition or 'Independent'})")
+
+        return "\n".join(lines)
+
     def _format_recent_events(self) -> str:
         """Format recent events for player display."""
         if not self.detailed_events:
             return "- Marco Polo Bridge Incident has occurred\n- Tensions are rising between Japanese and Chinese forces"
-        
+
         recent = self.detailed_events[-3:]
         formatted = []
         for event in recent:
             formatted.append(f"- {event.primary_actor}: {event.action_description}")
-        
+
         return "\n".join(formatted)
 
     def _generate_intelligence_report(self) -> str:
@@ -688,35 +752,80 @@ Use your decision tool to implement your choice with detailed reasoning.
         print(f"Peace Score: {turn_data['peace_metrics']['conflict_prevention']:.1f}/100")
         print(f"Diplomatic Success: {turn_data['peace_metrics']['diplomatic_success']:.1f}")
         print(f"International Reputation: {turn_data['peace_metrics']['international_reputation']:.1f}/100")
-        
+
+        # Show war intentions from both sides
+        japan_intention, _ = self.peace_calculator.calculate_country_intention("japan")
+        china_intention, _ = self.peace_calculator.calculate_country_intention("china")
+        print(f"\n⚔️ War Intentions:")
+        print(f"  Japan: {japan_intention:.1f}/100")
+        print(f"  China: {china_intention:.1f}/100")
+
+        current_year = self.start_year + (turn_data['turn_number'] // 4)
+        years_to_goal = 1940 - current_year
+        if years_to_goal > 0:
+            print(f"\n📅 Years until 1940: {years_to_goal}")
+
         if turn_data['events']:
-            print(f"Recent Events:")
+            print(f"\nRecent Events:")
             for event in turn_data['events']:
                 print(f"  • {event}")
 
     def _check_peace_outcome(self) -> Optional[str]:
         """Check if simulation has reached a peace outcome (success or failure)."""
-        # Peace success conditions
-        if self.peace_metrics.conflict_prevention >= 80 and self.peace_metrics.diplomatic_success >= 50:
-            if self.conflict_intensity in [ConflictIntensity.DIPLOMATIC, ConflictIntensity.SKIRMISH]:
-                return "🕊️ PEACE ACHIEVED - Diplomatic resolution successful, war prevented!"
-        
-        # Peace failure conditions
+        # Get current war intentions from both sides
+        japan_intention, _ = self.peace_calculator.calculate_country_intention("japan")
+        china_intention, _ = self.peace_calculator.calculate_country_intention("china")
+
+        # Determine opponent's war intention based on player role
+        if self.player_role == PlayerRole.EMPEROR:
+            opponent_intention = china_intention
+            player_intention = japan_intention
+        else:
+            opponent_intention = japan_intention
+            player_intention = china_intention
+
+        # Check if we've reached 1940 (victory condition)
+        current_year = self.start_year + (self.game_state.current_turn // 4)  # Assuming 4 turns per year
+
+        if current_year >= 1940:
+            # Victory condition assessment at 1940
+            if opponent_intention >= 90:
+                if self.peace_metrics.conflict_prevention >= 80 and player_intention <= 30:
+                    return "⚠️ PYRRHIC VICTORY - Peace maintained but opponent ready for total war!"
+                else:
+                    return "💥 DEFEAT - Opponent achieved total war readiness despite your efforts"
+            elif opponent_intention >= 70:
+                if self.peace_metrics.conflict_prevention >= 70 and player_intention <= 40:
+                    return "🤝 PARTIAL VICTORY - Peace maintained but high tensions remain"
+                else:
+                    return "⚖️ STALEMATE - Neither full peace nor war achieved"
+            else:
+                if self.peace_metrics.conflict_prevention >= 80 and player_intention <= 30:
+                    return "🕊️ COMPLETE VICTORY - Lasting peace achieved through 1940!"
+                elif self.peace_metrics.conflict_prevention >= 60 and player_intention <= 50:
+                    return "✅ MINOR VICTORY - War avoided but some tensions persist"
+                else:
+                    return "📊 DRAW - Status quo maintained to 1940"
+
+        # Early failure conditions (before 1940)
         if self.peace_metrics.conflict_prevention <= 20:
             return "⚔️ PEACE FAILED - Conflict escalated beyond diplomatic resolution"
-        
+
         if self.conflict_intensity == ConflictIntensity.TOTAL_WAR:
             return "💥 TOTAL WAR - All diplomatic efforts have failed"
-        
-        # Moderate outcomes
-        if self.game_state.current_turn >= 12:
+
+        if opponent_intention >= 95 and self.peace_metrics.conflict_prevention < 50:
+            return "🚨 IMMINENT WAR - Opponent preparing for total war, peace hanging by thread"
+
+        # Mid-game assessment (not final)
+        if self.game_state.current_turn >= 12 and current_year < 1940:
             if self.peace_metrics.conflict_prevention >= 60:
-                return "🤝 PARTIAL PEACE - Tensions reduced, temporary ceasefire achieved"
+                return None  # Continue playing
             elif self.peace_metrics.conflict_prevention >= 40:
-                return "⚖️ UNSTABLE PEACE - Situation stabilized but fragile"
+                return None  # Continue playing
             else:
-                return "📈 LIMITED SUCCESS - Some progress made but conflict continues"
-        
+                return "📈 STRUGGLING - Diplomatic efforts failing, war likely"
+
         return None
 
     def _determine_final_peace_outcome(self) -> str:
