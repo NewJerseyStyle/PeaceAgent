@@ -374,6 +374,13 @@
             100% { transform: rotate(360deg); }
         }
 
+        @keyframes progressAnimation {
+            0% { width: 0%; }
+            50% { width: 60%; }
+            80% { width: 85%; }
+            100% { width: 95%; }
+        }
+
         .progress-bar {
             background: #e0e0e0;
             border-radius: 10px;
@@ -502,6 +509,20 @@
             <!-- Peace Metrics -->
             <div class="metrics-panel" id="metricsPanel">
                 <div class="metric-card">
+                    <div class="metric-value" id="peaceScore">100</div>
+                    <div class="metric-label">和平分數</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="peaceProgress" style="width: 100%"></div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-value" id="diplomacyScore">0</div>
+                    <div class="metric-label">外交成功</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="diplomacyProgress" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div class="metric-card">
                     <div class="metric-value" id="reputationScore">50</div>
                     <div class="metric-label">國際聲望</div>
                     <div class="progress-bar">
@@ -576,8 +597,8 @@
                 <h3>📋 事件記錄</h3>
                 <div id="eventsList">
                     <div class="event-item">
-                        <div class="event-time">1937年7月7日</div>
-                        <div>盧溝橋事變爆發，中日兩軍發生衝突</div>
+                        <div class="event-time" id="initialEventDate">1930年1月</div>
+                        <div id="initialEventDescription">經濟大蕭條影響亞洲，日本軍國主義抬頭</div>
                     </div>
                 </div>
             </div>
@@ -593,9 +614,13 @@
             <!-- Loading State -->
             <div class="loading" id="loadingState" style="display: none;">
                 <div class="spinner"></div>
-                <div>AI 正在分析局勢並制定回應...</div>
+                <div id="loadingMessage">AI 正在分析局勢並制定回應...</div>
+                <div id="currentPlayerThinking" style="font-size: 1.1rem; color: #667eea; margin-top: 10px; font-weight: bold;"></div>
                 <div style="font-size: 0.9rem; color: #666; margin-top: 10px;">
                     這可能需要一些時間，請耐心等待
+                </div>
+                <div class="progress-bar" style="width: 80%; margin: 20px auto 0;">
+                    <div class="progress-fill" id="loadingProgress" style="width: 0%; animation: progressAnimation 15s ease-in-out;"></div>
                 </div>
             </div>
         </div>
@@ -744,21 +769,21 @@
 
         function startNewTurn() {
             gameState.currentTurn++;
-            
+
             // Update turn counter
             const roleNames = {
                 emperor: '昭和天皇',
                 chiang: '蔣中正'
             };
-            
+
             document.getElementById('playerInfo').innerHTML = `
                 <div>角色：${roleNames[gameState.selectedRole]}</div>
                 <div>回合：${gameState.currentTurn}/${gameState.maxTurns}</div>
             `;
 
-            // Show loading state
-            showLoading(true);
-            
+            // Show loading state with current turn info
+            showLoading(true, true);
+
             // Simulate AI analysis (in real implementation, this would call the backend)
             setTimeout(() => {
                 generateSituationUpdate();
@@ -789,16 +814,28 @@
             // Add event to log
             addEvent(`第${gameState.currentTurn}回合`, currentSituations[situationIndex]);
 
-            // Simulate dev mode AI thoughts
+            // Simulate dev mode AI thoughts with progressive updates
             if (gameState.selectedMode === 'dev') {
                 const devThoughts = [
-                    "Tosei-ha Agent: 分析當前局勢，建議採取漸進式控制策略...",
-                    "Chinese Communist Agent: 評估統一戰線可能性，準備群眾動員方案...",
-                    "Zaibatsu Agent: 計算戰爭經濟收益，評估國際市場風險..."
+                    { agent: "Tosei-ha Agent", thought: "分析當前局勢，建議採取漸進式控制策略..." },
+                    { agent: "Chinese Communist Agent", thought: "評估統一戰線可能性，準備群眾動員方案..." },
+                    { agent: "Zaibatsu Agent", thought: "計算戰爭經濟收益，評估國際市場風險..." }
                 ];
-                document.getElementById('devOutput').innerHTML = devThoughts.map(thought => 
-                    `<div style="margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px;">${thought}</div>`
-                ).join('');
+
+                const devOutput = document.getElementById('devOutput');
+                devOutput.innerHTML = '';
+
+                // Show thoughts progressively
+                devThoughts.forEach((item, index) => {
+                    setTimeout(() => {
+                        const thoughtDiv = document.createElement('div');
+                        thoughtDiv.style.cssText = "margin: 10px 0; padding: 10px; background: #f0f0f0; border-radius: 5px; opacity: 0; transition: opacity 0.5s;";
+                        thoughtDiv.innerHTML = `<strong>${item.agent}:</strong> ${item.thought}`;
+                        devOutput.appendChild(thoughtDiv);
+                        // Fade in
+                        setTimeout(() => { thoughtDiv.style.opacity = '1'; }, 50);
+                    }, index * 500);
+                });
             }
         }
 
@@ -830,13 +867,14 @@
 
             // Hide decision panel and show loading
             document.getElementById('decisionPanel').style.display = 'none';
-            showLoading(true);
+            document.getElementById('loadingMessage').textContent = '處理您的決策並分析各方反應...';
+            showLoading(true, false);
 
             // Process decision (simulate AI response)
             setTimeout(() => {
                 processDecision(decision, input);
                 showLoading(false);
-                
+
                 // Check if simulation should continue
                 if (gameState.currentTurn < gameState.maxTurns && !checkEndConditions()) {
                     setTimeout(() => {
@@ -946,8 +984,35 @@
             eventsList.scrollTop = eventsList.scrollHeight;
         }
 
-        function showLoading(show) {
-            document.getElementById('loadingState').style.display = show ? 'block' : 'none';
+        function showLoading(show, isNewTurn = false) {
+            const loadingState = document.getElementById('loadingState');
+            const loadingProgress = document.getElementById('loadingProgress');
+            const currentPlayerThinking = document.getElementById('currentPlayerThinking');
+
+            if (show) {
+                loadingState.style.display = 'block';
+
+                // Reset and restart progress animation
+                loadingProgress.style.animation = 'none';
+                loadingProgress.offsetHeight; // Trigger reflow
+                loadingProgress.style.animation = 'progressAnimation 15s ease-in-out';
+
+                // Show who's thinking in default mode
+                if (gameState.selectedMode === 'default') {
+                    const opponents = {
+                        emperor: ['中國軍部', '中共勢力', '國際觀察家'],
+                        chiang: ['日本軍部', '關東軍', '日本財閥']
+                    };
+                    const currentOpponents = opponents[gameState.selectedRole] || [];
+                    const randomOpponent = currentOpponents[Math.floor(Math.random() * currentOpponents.length)];
+                    currentPlayerThinking.textContent = isNewTurn ? `${randomOpponent} 正在評估局勢...` : '';
+                } else {
+                    currentPlayerThinking.textContent = '';
+                }
+            } else {
+                loadingState.style.display = 'none';
+                currentPlayerThinking.textContent = '';
+            }
         }
 
         function checkEndConditions() {
@@ -1029,18 +1094,4 @@
         }
     </script>
 </body>
-</html>peaceScore">100</div>
-                    <div class="metric-label">和平分數</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="peaceProgress" style="width: 100%"></div>
-                    </div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="diplomacyScore">0</div>
-                    <div class="metric-label">外交成功</div>
-                    <div class="progress-bar">
-                        <div class="progress-fill" id="diplomacyProgress" style="width: 0%"></div>
-                    </div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-value" id="
+</html>

@@ -33,6 +33,7 @@ from langchain_groq import ChatGroq
 
 # Import base classes
 from sino_japanese_war_simulation import SinoJapaneseWarSimulation, ConflictIntensity, DetailedEvent
+from historical_events_system import HistoricalEventsManager, HistoricalEvent, EventSeverity
 
 
 class PlayerRole(Enum):
@@ -60,9 +61,9 @@ class PeaceMetrics:
 
 class InteractivePeaceSimulator(SinoJapaneseWarSimulation):
     """Interactive peace simulation allowing human players to prevent war."""
-    
-    def __init__(self, player_role: PlayerRole, simulation_mode: SimulationMode = SimulationMode.DEFAULT, 
-                 llm_model: str = "groq/llama3-70b-8192"):
+
+    def __init__(self, player_role: PlayerRole, simulation_mode: SimulationMode = SimulationMode.DEFAULT,
+                 llm_model: str = "groq/llama3-70b-8192", start_year: int = 1930):
         super().__init__(llm_model)
         self.player_role = player_role
         self.simulation_mode = simulation_mode
@@ -70,13 +71,17 @@ class InteractivePeaceSimulator(SinoJapaneseWarSimulation):
         self.player_decisions: List[Dict[str, Any]] = []
         self.diplomatic_proposals: List[Dict[str, Any]] = []
         self.negotiation_history: List[str] = []
-        
+
+        # Initialize historical events system
+        self.events_manager = HistoricalEventsManager(start_year)
+        self.start_year = start_year
+
         # Override initial conflict intensity for peace-focused simulation
         self.conflict_intensity = ConflictIntensity.DIPLOMATIC
-        
+
         # Setup interactive logging
         self._setup_interactive_logging()
-        
+
         # Initialize peace-oriented objectives
         self._initialize_peace_objectives()
 
@@ -126,8 +131,8 @@ class InteractivePeaceSimulator(SinoJapaneseWarSimulation):
         if self.player_role == PlayerRole.EMPEROR:
             print(f"""
 📜 You are Emperor Hirohito of Japan
-🗓️ Date: July 1937, following the Marco Polo Bridge Incident
-🎯 Your Goal: Use your divine authority to prevent full-scale war with China
+🗓️ Date: {self.start_year}, during economic crisis and rising militarism
+🎯 Your Goal: Use your divine authority to prevent military escalation and maintain peace
 
 Your Position:
 - You have ultimate moral authority but work through military and civilian advisors
@@ -145,7 +150,7 @@ Key Challenges:
         elif self.player_role == PlayerRole.CHIANG:
             print(f"""
 📜 You are Generalissimo Chiang Kai-shek of the Republic of China
-🗓️ Date: July 1937, following the Marco Polo Bridge Incident  
+🗓️ Date: {self.start_year}, facing Japanese militarism and internal challenges
 🎯 Your Goal: Protect Chinese sovereignty while avoiding devastating full-scale war
 
 Your Position:

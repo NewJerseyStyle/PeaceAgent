@@ -591,7 +591,7 @@ class WarAgentSimulation:
         }
         
         self.game_state.countries = countries_data
-        self.game_state.trigger_event = "Marco Polo Bridge Incident - July 7, 1937"
+        self.game_state.trigger_event = "Economic Crisis and Rising Militarism - 1930"
         
         # Initialize complex relationship matrix based on historical alliances and conflicts
         self._initialize_sino_japanese_relationships()
