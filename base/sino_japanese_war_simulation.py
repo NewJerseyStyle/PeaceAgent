@@ -20,7 +20,7 @@ from dataclasses import dataclass, asdict
 from enum import Enum
 
 from crewai import Agent, Task, Crew, Process
-from crewai_tools import Tool
+from crewai.tools.base_tool import Tool
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 from langchain_groq import ChatGroq
