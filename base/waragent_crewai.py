@@ -82,8 +82,7 @@ class WarAgentSimulation:
         elif llm_model == "claude-2":
             self.llm = ChatAnthropic(model="claude-2", temperature=0.7)
         elif llm_model.startswith("groq/"):
-            model_name = llm_model.replace("groq/", "")
-            self.llm = ChatGroq(model=model_name, temperature=0.7)
+            self.llm = ChatGroq(model=llm_model, temperature=0.7)
         else:
             raise ValueError(f"Unsupported model: {llm_model}")
         
@@ -1015,7 +1014,7 @@ def main():
     
     parser = argparse.ArgumentParser(description="WarAgent simulation using CrewAI")
     parser.add_argument("--model", 
-                        choices=["gpt-4", "claude-2", "groq/llama3-70b-8192", "groq/llama3-8b-8192", "groq/mixtral-8x7b-32768"],
+                        choices=["gpt-4", "claude-2", "groq/meta-llama/llama-4-scout-17b-16e-instruct", "groq/llama-3.1-8b-instant", "groq/qwen/qwen3-32b"],
                         default="gpt-4",
                         help="LLM model to use for agents")
     parser.add_argument("--scenario", 
