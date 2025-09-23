@@ -659,6 +659,7 @@ class WarAgentSimulation:
                 verbose=True,
                 allow_delegation=False,
                 llm=self.llm,
+                max_rpm=os.getenv('MAX_RPM', 60),
                 tools=[self._create_action_tool(country_name)]
             )
             self.country_agents[country_name] = agent
@@ -683,6 +684,7 @@ class WarAgentSimulation:
                 verbose=True,
                 allow_delegation=False,
                 llm=self.llm,
+                max_rpm=os.getenv('MAX_RPM', 60),
                 tools=[self._create_validation_tool(country_name)]
             )
             self.secretary_agents[country_name] = agent
@@ -706,6 +708,7 @@ class WarAgentSimulation:
             verbose=True,
             allow_delegation=False,
             llm=self.llm,
+            max_rpm=os.getenv('MAX_RPM', 60),
             tools=[self._create_board_tools()]
         )
 
