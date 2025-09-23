@@ -1,8 +1,43 @@
 # PeaceAgent
 Based on agiresearch/WarAgent but with HITL for role play
 
+## 📦 Setup
+### Python version
+Python 3.9+
+### Python virtual environment (Optional)
+```bash
+# Virtual environment if you need
+python -m venv peace-simulator
+source peace-simulator/bin/activate  # Linux/Mac
+# peace-simulator\Scripts\activate.bat  # Windows
+```
+### Python Packages
+Open terminal and install packages with commands
+```bash
+# Core dependencies
+pip install crewai crewai-tools
+pip install langchain-openai langchain-anthropic langchain-groq
+pip install fastapi uvicorn websockets
+pip install pydantic python-multipart
 
-# Based on works
+# Optional
+pip install pandas numpy matplotlib plotly
+```
+### API Key (Setup any one of these)
+```bash
+export GROQ_API_KEY="your_groq_api_key"     # Economy
+export OPENAI_API_KEY="your_openai_api_key" # Qulity
+export ANTHROPIC_API_KEY="your_claude_key"  # Performance
+export GEMINI_API_KEY="your_gemini_key"     # Balanced
+```
+### Start Web app
+```
+python peace_simulator_api.py --model gpt-4
+
+# Browser goto http://localhost:8000
+```
+
+## Based on works
 ```
 @article{hua2023war,
       title={War and Peace (WarAgent): Large Language Model-based Multi-Agent Simulation of World Wars}, 
