@@ -470,7 +470,7 @@
 
                 <div class="setting-group">
                     <h3>⏱️ 最大回合數</h3>
-                    <input type="number" id="maxTurns" value="15" min="5" max="30">
+                    <input type="number" id="maxTurns" value="120" min="12" max="120">
                 </div>
             </div>
 
@@ -536,6 +536,13 @@
                         <div class="progress-fill" id="stabilityProgress" style="width: 50%"></div>
                     </div>
                 </div>
+                <div class="metric-card" style="border-left-color: #dc3545;">
+                    <div class="metric-value" id="warIntentionScore">50</div>
+                    <div class="metric-label">戰爭傾向</div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="warIntentionProgress" style="width: 50%; background: linear-gradient(45deg, #ffc107, #dc3545);"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- Current Situation -->
@@ -558,34 +565,11 @@
                 </div>
                 
                 <div class="decision-options" id="decisionOptions">
-                    <div class="decision-option" data-option="diplomatic">
-                        <strong>🕊️ 外交倡議</strong>
-                        <p>提議直接談判，尋求和平解決方案</p>
-                    </div>
-                    <div class="decision-option" data-option="restraint">
-                        <strong>🛡️ 軍事克制</strong>
-                        <p>下令避免軍事升級，保持防禦態勢</p>
-                    </div>
-                    <div class="decision-option" data-option="mediation">
-                        <strong>🌐 國際調解</strong>
-                        <p>尋求第三方國際力量介入調停</p>
-                    </div>
-                    <div class="decision-option" data-option="unity">
-                        <strong>🤝 內部團結</strong>
-                        <p>團結國內各派系支持和平政策</p>
-                    </div>
-                    <div class="decision-option" data-option="concession">
-                        <strong>⚖️ 策略讓步</strong>
-                        <p>提出妥協方案以防止戰爭爆發</p>
-                    </div>
-                    <div class="decision-option" data-option="appeal">
-                        <strong>📢 公開呼籲</strong>
-                        <p>向國際社會發表和平聲明</p>
-                    </div>
+                    <!-- Options will be dynamically generated based on role -->
                 </div>
 
-                <textarea class="decision-input" id="decisionInput" 
-                          placeholder="請詳細說明您的決策理由和具體實施方案...&#10;&#10;例如：&#10;- 具體的談判條件&#10;- 預期的結果&#10;- 風險評估&#10;- 備選方案"></textarea>
+                <textarea class="decision-input" id="decisionInput"
+                          placeholder="說明您的決策理由...&#10;&#10;注意：此內容僅供記錄，不會影響其他玩家。"></textarea>
 
                 <button class="submit-decision" id="submitDecision">
                     ✅ 確認決策
@@ -632,15 +616,20 @@
             selectedRole: null,
             selectedMode: 'default',
             selectedModel: 'groq/llama3-70b-8192',
-            maxTurns: 15,
+            maxTurns: 120,  // 10 years * 12 months (1930-1940)
+            startYear: 1930,
             currentTurn: 0,
             isSimulationRunning: false,
             currentDecision: null,
+            historicalEvents: [],
+            warIntention: 50,  // 0=peace, 100=total war (BDM calculated)
+            emperorInfluence: 30,  // Emperor's influence level
+            factionStates: {},  // Detailed faction positions
             metrics: {
-                peace: 100,
+                peace: 80,
                 diplomacy: 0,
-                reputation: 50,
-                stability: 50
+                reputation: 30,
+                stability: 20
             }
         };
 
@@ -860,9 +849,17 @@
                 return;
             }
             
+            // Reasoning is optional - provide default if empty
             if (!input) {
-                alert('請詳細說明您的決策理由！');
-                return;
+                const defaultReasons = {
+                    diplomatic: '推動和平談判',
+                    restraint: '避免軍事升級',
+                    mediation: '尋求國際支持',
+                    unity: '團結內部力量',
+                    concession: '以退為進',
+                    appeal: '爭取國際輿論'
+                };
+                input = defaultReasons[decision] || '維護和平';
             }
 
             // Hide decision panel and show loading
@@ -887,15 +884,18 @@
         }
 
         function processDecision(decision, reasoning) {
-            // Simulate decision impact on metrics
+            // More balanced impact values that don't lead to instant victory
             const impacts = {
-                diplomatic: { peace: 15, diplomacy: 20, reputation: 10, stability: 5 },
-                restraint: { peace: 20, diplomacy: 10, reputation: 15, stability: 10 },
-                mediation: { peace: 10, diplomacy: 25, reputation: 20, stability: 5 },
-                unity: { peace: 5, diplomacy: 15, reputation: 5, stability: 25 },
-                concession: { peace: 25, diplomacy: 15, reputation: -5, stability: -10 },
-                appeal: { peace: 10, diplomacy: 20, reputation: 15, stability: 0 }
+                diplomatic: { peace: 8, diplomacy: 12, reputation: 5, stability: 3 },
+                restraint: { peace: 10, diplomacy: 5, reputation: 8, stability: 5 },
+                mediation: { peace: 5, diplomacy: 15, reputation: 10, stability: 2 },
+                unity: { peace: 3, diplomacy: 8, reputation: 3, stability: 15 },
+                concession: { peace: 12, diplomacy: 8, reputation: -5, stability: -8 },
+                appeal: { peace: 5, diplomacy: 10, reputation: 8, stability: 0 }
             };
+
+            // Military pressure reduces peace over time if not actively countered
+            gameState.metrics.peace = Math.max(0, gameState.metrics.peace - 2); // Natural decay from military pressure
 
             const impact = impacts[decision] || { peace: 0, diplomacy: 0, reputation: 0, stability: 0 };
             
@@ -909,6 +909,14 @@
             gameState.metrics.diplomacy = Math.max(0, gameState.metrics.diplomacy + impact.diplomacy);
             gameState.metrics.reputation = Math.max(0, Math.min(100, gameState.metrics.reputation + impact.reputation));
             gameState.metrics.stability = Math.max(0, Math.min(100, gameState.metrics.stability + impact.stability));
+
+            // Update war intention based on BDM model simulation
+            updateWarIntention(decision);
+
+            // Update Emperor influence if applicable
+            if (gameState.selectedRole === 'emperor') {
+                updateEmperorInfluence(decision);
+            }
 
             // Update UI
             updateMetrics();
@@ -1016,16 +1024,31 @@
         }
 
         function checkEndConditions() {
-            // Peace achieved
-            if (gameState.metrics.peace >= 80 && gameState.metrics.diplomacy >= 50) {
-                return 'peace_achieved';
+            // Calculate years passed
+            const yearsPassed = Math.floor(gameState.currentTurn / 12);
+            const currentYear = gameState.startYear + yearsPassed;
+
+            // Victory: Maintain peace until 1940
+            if (currentYear >= 1940) {
+                if (gameState.warIntention < 90) {  // Not in total war
+                    return 'peace_achieved';
+                }
             }
-            
-            // Peace failed
-            if (gameState.metrics.peace <= 20) {
-                return 'peace_failed';
+
+            // Peace failed - war inevitable
+            if (gameState.warIntention >= 90) {
+                return 'peace_failed';  // Total war threshold
             }
-            
+
+            // Check if reached max turns without war
+            if (gameState.currentTurn >= gameState.maxTurns) {
+                if (gameState.warIntention < 70) {
+                    return 'temporary_peace';
+                } else {
+                    return 'unstable_peace';
+                }
+            }
+
             return false;
         }
 
@@ -1073,6 +1096,145 @@
             `;
             
             document.getElementById('situationPanel').replaceWith(resultPanel);
+        }
+
+        function updateWarIntention(decision) {
+            // Simulate BDM model effects on war intention
+            const warEffects = {
+                emperor: {
+                    do_nothing: 3,  // Military acts more freely
+                    diplomatic: -5,
+                    restraint: -3,
+                    support_military: 8,
+                    dismiss_minister: -4,
+                    rally_moderates: -6
+                },
+                chiang: {
+                    diplomatic: -8,
+                    military_preparation: 10,
+                    unite_communists: 5,
+                    international_appeal: -3,
+                    local_concession: -10,
+                    mobilize_nationalism: 15
+                }
+            };
+
+            const effects = warEffects[gameState.selectedRole] || {};
+            const change = effects[decision] || 0;
+
+            // Add random variation to simulate faction dynamics
+            const variation = (Math.random() - 0.5) * 5;
+
+            gameState.warIntention = Math.max(0, Math.min(100,
+                gameState.warIntention + change + variation));
+
+            // Update war intention display
+            document.getElementById('warIntentionScore').textContent = Math.round(gameState.warIntention);
+            document.getElementById('warIntentionProgress').style.width = gameState.warIntention + '%';
+
+            // Change color based on danger level
+            const progressBar = document.getElementById('warIntentionProgress');
+            if (gameState.warIntention >= 90) {
+                progressBar.style.background = 'linear-gradient(45deg, #dc3545, #721c24)';
+            } else if (gameState.warIntention >= 70) {
+                progressBar.style.background = 'linear-gradient(45deg, #ffc107, #dc3545)';
+            } else if (gameState.warIntention >= 50) {
+                progressBar.style.background = 'linear-gradient(45deg, #28a745, #ffc107)';
+            } else {
+                progressBar.style.background = 'linear-gradient(45deg, #20c997, #28a745)';
+            }
+        }
+
+        function updateEmperorInfluence(decision) {
+            const influenceCosts = {
+                do_nothing: 0,
+                diplomatic: -3,
+                restraint: -2,
+                support_military: 2,  // Gains influence by supporting military
+                dismiss_minister: -5,
+                rally_moderates: -1
+            };
+
+            const cost = influenceCosts[decision] || 0;
+            gameState.emperorInfluence = Math.max(5, Math.min(50,
+                gameState.emperorInfluence + cost));
+
+            // Positive outcomes can restore some influence
+            if (gameState.metrics.peace > 70 && Math.random() > 0.7) {
+                gameState.emperorInfluence = Math.min(50, gameState.emperorInfluence + 1);
+            }
+        }
+
+        function showDecisionPanel() {
+            document.getElementById('decisionPanel').style.display = 'block';
+
+            // Update decision description based on role
+            const descriptions = {
+                emperor: `身為天皇，您擁有道德權威但不應直接干預政府。當前影響力：${gameState.emperorInfluence.toFixed(0)}/50。每次干預會消耗影響力。`,
+                chiang: `作為中華民國領袖，您必須平衡多方勢力。當前戰爭傾向：${gameState.warIntention.toFixed(0)}/100。`
+            };
+
+            document.getElementById('decisionDescription').textContent = descriptions[gameState.selectedRole];
+
+            // Generate decision options based on role
+            generateDecisionOptions();
+        }
+
+        function generateDecisionOptions() {
+            const optionsContainer = document.getElementById('decisionOptions');
+            optionsContainer.innerHTML = '';
+
+            let options = [];
+            if (gameState.selectedRole === 'emperor') {
+                options = [
+                    { id: 'do_nothing', icon: '🤐', title: '保持沉默', desc: '不干預政府事務（不消耗影響力）', cost: 0 },
+                    { id: 'diplomatic', icon: '🕊️', title: '和平聲明', desc: '公開呼籲外交解決', cost: 3 },
+                    { id: 'restraint', icon: '✋', title: '私下勸告', desc: '私下要求軍部克制', cost: 2 },
+                    { id: 'support_military', icon: '⚔️', title: '支持軍部', desc: '支持「防禦性」行動', cost: -2 },
+                    { id: 'dismiss_minister', icon: '🚫', title: '撤換大臣', desc: '行使權力撤換激進大臣', cost: 5 },
+                    { id: 'rally_moderates', icon: '🤝', title: '召集溫和派', desc: '組織溫和派商討和平', cost: 1 }
+                ];
+            } else {
+                options = [
+                    { id: 'diplomatic', icon: '🕊️', title: '直接談判', desc: '提議中日直接談判' },
+                    { id: 'military_preparation', icon: '🛡️', title: '軍事準備', desc: '加強軍事準備，展示決心' },
+                    { id: 'unite_communists', icon: '🤝', title: '聯合共產黨', desc: '與共產黨合作抗日' },
+                    { id: 'international_appeal', icon: '🌐', title: '國際求援', desc: '向國際社會求助' },
+                    { id: 'local_concession', icon: '⚖️', title: '局部讓步', desc: '局部讓步避免全面戰爭' },
+                    { id: 'mobilize_nationalism', icon: '📢', title: '動員民族主義', desc: '激發民族主義情緒' }
+                ];
+            }
+
+            options.forEach(option => {
+                const optionDiv = document.createElement('div');
+                optionDiv.className = 'decision-option';
+                optionDiv.dataset.option = option.id;
+
+                let costDisplay = '';
+                if (gameState.selectedRole === 'emperor' && option.cost !== undefined) {
+                    const influenceColor = option.cost > 0 ? '#dc3545' : option.cost < 0 ? '#28a745' : '#6c757d';
+                    costDisplay = `<div style="font-size: 0.8rem; color: ${influenceColor}; margin-top: 5px;">影響力：${option.cost > 0 ? '-' : '+'}${Math.abs(option.cost)}</div>`;
+                }
+
+                optionDiv.innerHTML = `
+                    <strong>${option.icon} ${option.title}</strong>
+                    <p>${option.desc}</p>
+                    ${costDisplay}
+                `;
+
+                // Disable if Emperor doesn't have enough influence
+                if (gameState.selectedRole === 'emperor' && option.cost > 0 && gameState.emperorInfluence < option.cost) {
+                    optionDiv.style.opacity = '0.5';
+                    optionDiv.style.cursor = 'not-allowed';
+                    optionDiv.title = '影響力不足';
+                } else {
+                    optionDiv.addEventListener('click', function() {
+                        selectDecisionOption(this.dataset.option);
+                    });
+                }
+
+                optionsContainer.appendChild(optionDiv);
+            });
         }
 
         function downloadResults() {

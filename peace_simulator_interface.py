@@ -51,10 +51,10 @@ class SimulationMode(Enum):
 class PeaceMetrics:
     """Metrics for measuring peace achievement."""
     diplomatic_success: float = 0.0
-    conflict_prevention: float = 100.0  # Starts at 100, decreases with escalation
+    conflict_prevention: float = 80.0  # Starts at 80, decreases with escalation
     civilian_casualties_avoided: int = 0
-    international_reputation: float = 50.0
-    internal_stability: float = 50.0
+    international_reputation: float = 30.0
+    internal_stability: float = 20.0
     negotiation_rounds: int = 0
     peace_agreements_reached: int = 0
 
