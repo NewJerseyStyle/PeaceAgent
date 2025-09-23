@@ -45,7 +45,7 @@ except ImportError as e:
 class SimulationStartRequest(BaseModel):
     player_role: str  # "emperor" or "chiang"
     simulation_mode: str = "default"  # "default" or "dev"
-    llm_model: str = "groq/llama3-70b-8192"
+    llm_model: str = "gemini/gemini-2.0-flash"
     max_turns: int = 15
     custom_trigger: Optional[str] = None
 
